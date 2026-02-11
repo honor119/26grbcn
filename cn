@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>학년·반 조회</title>
+  <style>
+    :root {
+      --bg: rgba(0,0,0,.5);
+      --card: #fff;
+      --text: #111;
+      --muted: #666;
+      --line: #ddd;
+      --btn: #111;
+      --btnText: #fff;
+      --btn2: #eee;
+    }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+      margin: 24px;
+      color: var(--text);
+    }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    button {
+      padding: 10px 14px;
+      border: 0;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .btn { background: var(--btn); color: var(--btnText); }
+    .btn2 { background: var(--btn2); color: var(--text); }
+
+    /* modal */
+    .modal-bg {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      justify-content: center;
+      align-items: center;
+      padding: 16px;
+      z-index: 9999;
+    }
+    .modal {
+      width: min(420px, 100%);
+      background: var(--card);
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.25);
+      overflow: hidden;
+    }
+    .modal-header {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .modal-header h2 {
+      margin: 0;
+      font-size: 18px;
+    }
+    .modal-body { padding: 18px; }
+    label { display: block; font-size: 13px; color: var(--muted); margin-top: 10px; }
+    input {
+      width: 100%;
+      margin-top: 6px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      outline: none;
+      font-size: 15px;
+    }
+    input:focus { border-color: #999; }
+    .hint { margin-top: 6px; font-size: 12px; color: var(--muted); }
+    .actions { margin-top: 14px; display: flex; gap: 10px; }
+    .result {
+      margin-top: 14px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fafafa;
+      min-height: 44px;
+      font-weight: 700;
+    }
+    .result small { display:block; font-weight: 600; color: var(--muted); margin-top: 6px; }
+    .xbtn {
+      background: transparent;
+      border: 0;
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+      padding: 6px 10px;
+      border-radius: 10px;
+    }
+    .xbtn:hover { background: #f2f2f2; }
+  </style>
+</head>
+<body>
+
+  <div class="row">
+    <button class="btn" id="openBtn">학년·반 조회</button>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal-bg" id="modalBg" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modalTitle">학년 / 반 조회</h2>
+        <button class="xbtn" id="closeBtn" aria-label="닫기">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <label for="name">이름</label>
+        <input id="name" autocomplete="name" placeholder="예) 김민수" />
+
+        <label for="birth">생년월일</label>
+        <input id="birth" inputmode="numeric" maxlength="8" placeholder="YYYYMMDD (예: 20130115)" />
+        <div class="hint">생년월일은 8자리 숫자로 입력해 주세요.</div>
+
+        <div class="actions">
+          <button class="btn" id="lookupBtn">조회</button>
+          <button class="btn2" id="resetBtn">초기화</button>
+        </div>
+
+        <div class="result" id="result">정보를 입력한 뒤 “조회”를 눌러 주세요.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /******************************************************************
+     * ✅ 설정: 개인 서버 API 주소를 본인 서버 주소로 바꿔 주세요.
+     * 예) https://api.myserver.com/lookup
+     ******************************************************************/
+    const API_URL = "https://YOUR-SERVER.DOMAIN/lookup";
+
+    /******************************************************************
+     * 참고: 서버는 엑셀 파일 "2026GRB_CN.xlsx"를 읽도록 구성되어 있어야 합니다.
+     * (엑셀 파일명은 서버 코드에서 readFile("./2026GRB_CN.xlsx")로 사용)
+     ******************************************************************/
+
+    const modalBg = document.getElementById("modalBg");
+    const openBtn = document.getElementById("openBtn");
+    const closeBtn = document.getElementById("closeBtn");
+    const lookupBtn = document.getElementById("lookupBtn");
+    const resetBtn = document.getElementById("resetBtn");
+
+    const nameEl = document.getElementById("name");
+    const birthEl = document.getElementById("birth");
+    const resultEl = document.getElementById("result");
+
+    function openModal() {
+      modalBg.style.display = "flex";
+      resultEl.textContent = "정보를 입력한 뒤 “조회”를 눌러 주세요.";
+      setTimeout(() => nameEl.focus(), 50);
+    }
+
+    function closeModal() {
+      modalBg.style.display = "none";
+    }
+
+    function resetForm() {
+      nameEl.value = "";
+      birthEl.value = "";
+      resultEl.textContent = "정보를 입력한 뒤 “조회”를 눌러 주세요.";
+      nameEl.focus();
+    }
+
+    function setLoading(isLoading) {
+      lookupBtn.disabled = isLoading;
+      lookupBtn.textContent = isLoading ? "조회 중..." : "조회";
+    }
+
+    function validateInput(name, birth) {
+      if (!name) return "이름을 입력해 주세요.";
+      if (!/^\d{8}$/.test(birth)) return "생년월일은 8자리(YYYYMMDD)로 입력해 주세요.";
+      return null;
+    }
+
+    async function findClass() {
+      const name = nameEl.value.trim();
+      const birth = birthEl.value.trim();
+
+      const err = validateInput(name, birth);
+      if (err) {
+        resultEl.textContent = err;
+        return;
+      }
+
+      setLoading(true);
+      resultEl.textContent = "조회 중입니다...";
+
+      try {
+        const res = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, birth })
+        });
+
+        if (!res.ok) {
+          // 서버 오류(400/500 등)
+          resultEl.textContent = "서버 응답 오류가 발생했습니다. 관리자에게 문의해 주세요.";
+          setLoading(false);
+          return;
+        }
+
+        const data = await res.json();
+
+        if (data.ok) {
+          // ✅ 필요하면 number 표시는 빼도 됨
+          const numberPart = (typeof data.number === "number" && !Number.isNaN(data.number))
+            ? ` ${data.number}번`
+            : "";
+
+          resultEl.textContent = `${data.grade}학년 ${data.class}반${numberPart}입니다.`;
+          resultEl.insertAdjacentHTML("beforeend",
+            `<small>※ 입력 정보가 다르면 조회되지 않습니다.</small>`
+          );
+        } else {
+          resultEl.textContent = "일치하는 학생 정보가 없습니다.";
+          resultEl.insertAdjacentHTML("beforeend",
+            `<small>이름/생년월일을 다시 확인해 주세요.</small>`
+          );
+        }
+
+      } catch (e) {
+        resultEl.textContent = "네트워크 오류가 발생했습니다. 연결 상태를 확인해 주세요.";
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    // 이벤트 연결
+    openBtn.addEventListener("click", openModal);
+    closeBtn.addEventListener("click", closeModal);
+    resetBtn.addEventListener("click", resetForm);
+    lookupBtn.addEventListener("click", findClass);
+
+    // 모달 바깥 클릭 시 닫기
+    modalBg.addEventListener("click", (e) => {
+      if (e.target === modalBg) closeModal();
+    });
+
+    // Enter로 조회 / Esc로 닫기
+    document.addEventListener("keydown", (e) => {
+      if (modalBg.style.display === "flex") {
+        if (e.key === "Escape") closeModal();
+        if (e.key === "Enter") findClass();
+      }
+    });
+
+    // birth 입력은 숫자만 받도록(편의)
+    birthEl.addEventListener("input", () => {
+      birthEl.value = birthEl.value.replace(/[^\d]/g, "").slice(0, 8);
+    });
+  </script>
+
+</body>
+</html>
